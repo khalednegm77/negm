@@ -18,6 +18,11 @@ const allVideos: { src: string; caption: string }[] = [
   { src: "/videos/Snapchat-524881199.mp4", caption: "My favorite view" },
   { src: "/videos/Snapchat-294982742.mp4", caption: "You make my heart smile" },
   { src: "/videos/VID-20260701-WA0010.mp4", caption: "Together, always" },
+  { src: "/videos/VID-20260716-WA0060.mp4", caption: "Another favorite moment" },
+  { src: "/videos/VID-20260716-WA0076.mp4", caption: "A moment to replay" },
+  { src: "/videos/VID-20260716-WA0081.mp4", caption: "Only us" },
+  { src: "/videos/VID-20260716-WA0091.mp4", caption: "A memory in motion" },
+  { src: "/videos/VID-20260716-WA0096.mp4", caption: "Forever a favorite" },
 ]
 
 export function Videos() {
