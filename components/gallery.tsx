@@ -20,8 +20,8 @@ const photos = [
   { src: "/photo/Snapchat-1574178237.jpg", caption: "b34 kol haga feky" },
   { src: "/photo/Snapchat-1614855115.jpg", caption: "om el 3yal" },
   { src: "/photo/IMG-20260701-WA0005.jpg", caption: "a7la ayam hyaty btb4a m3aky" },
-  { src: "/photo/IMG-20260716-WA0009.jpg", caption: "A memory worth keeping" },
-  { src: "/photo/motion_photo_8239476918249932726.jpg", caption: "One of our little moments" },
+  { src: "/photo/IMG-20260716-WA0009.jpg", caption: "b34' hblna" },
+  { src: "/photo/motion_photo_8239476918249932726.jpg", caption: "bhbkkk" },
   { src: "/photo/Snapchat-1797008326.jpg", caption: "mhd4 bywhshny adek bgd" },
   { src: "/photo/Snapchat-1931337413.jpg", caption: "bmoot feky ya meemy" },
 ]
