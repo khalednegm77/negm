@@ -30,15 +30,82 @@ export function Videos() {
   const videosContent = content.videos || {}
   const [errored, setErrored] = useState<Record<string, boolean>>({})
   const [retryCount, setRetryCount] = useState<Record<string, number>>({})
+  const [loadedVideos, setLoadedVideos] = useState<Set<number>>(new Set())
+  const loadedRef = useRef<Set<number>>(new Set())
   const videos = allVideos
 
   const videoRefs = useRef<(HTMLVideoElement | null)[]>([])
+  const stallTimers = useRef<Record<number, ReturnType<typeof setTimeout> | null>>({})
   const [activeIndex, setActiveIndex] = useState<number | null>(null)
   const [allMuted, setAllMuted] = useState(true)
   const [visibleVideos, setVisibleVideos] = useState<Set<number>>(new Set())
   const [playingVideos, setPlayingVideos] = useState<Set<number>>(new Set())
   const containerRef = useRef<HTMLDivElement>(null)
   const sectionRef = useReveal<HTMLElement>()
+
+  // Shared retry/fail logic, used both by real error events and by the
+  // stall-timeout fallback below (browsers don't always fire "error" when a
+  // video just hangs mid-load, they silently stay blank forever).
+  const handleFailure = (index: number, src: string) => {
+    setRetryCount((prev) => {
+      const attempts = (prev[src] || 0) + 1
+      if (attempts <= 3) {
+        const el = videoRefs.current[index]
+        if (el) {
+          setTimeout(() => { el.load() }, 800 * attempts)
+        }
+      } else {
+        setErrored((e) => ({ ...e, [src]: true }))
+      }
+      return { ...prev, [src]: attempts }
+    })
+  }
+
+  const clearStallTimer = (index: number) => {
+    const t = stallTimers.current[index]
+    if (t) {
+      clearTimeout(t)
+      stallTimers.current[index] = null
+    }
+  }
+
+  const armStallTimer = (index: number, src: string) => {
+    clearStallTimer(index)
+    stallTimers.current[index] = setTimeout(() => {
+      // Still hasn't produced a frame and never errored — treat as failed
+      // so it gets retried/marked errored instead of staying blank forever.
+      if (!loadedRef.current.has(index)) {
+        handleFailure(index, src)
+      }
+    }, 9000)
+  }
+
+  useEffect(() => {
+    return () => {
+      Object.values(stallTimers.current).forEach((t) => t && clearTimeout(t))
+    }
+  }, [])
+
+  const markLoaded = (index: number) => {
+    clearStallTimer(index)
+    if (!loadedRef.current.has(index)) {
+      loadedRef.current.add(index)
+      setLoadedVideos((prev) => {
+        const next = new Set(prev)
+        next.add(index)
+        return next
+      })
+    }
+  }
+
+  const markUnloaded = (index: number) => {
+    loadedRef.current.delete(index)
+    setLoadedVideos((prev) => {
+      const next = new Set(prev)
+      next.delete(index)
+      return next
+    })
+  }
 
   // Lazy-load: mark videos as "visible" (src can be set) when near viewport
   useEffect(() => {
@@ -77,7 +144,7 @@ export function Videos() {
               next.add(index)
               return next
             })
-            void video.play().catch(() => {})
+            void video.play().catch(() => { })
           } else {
             setPlayingVideos((prev) => {
               const next = new Set(prev)
@@ -192,28 +259,36 @@ export function Videos() {
                     aria-label={isActive ? `Mute ${video.caption}` : `Play ${video.caption} with sound`}
                   >
                     {isVisible ? (
-                      <video
-                        ref={(el) => { videoRefs.current[index] = el }}
-                        src={video.src}
-                        autoPlay
-                        muted
-                        loop
-                        playsInline
-                        preload="auto"
-                        className="aspect-[9/16] h-full w-full object-cover transition-transform duration-700 group-hover:scale-[1.03]"
-                        onError={() => {
-                          const attempts = (retryCount[video.src] || 0) + 1
-                          if (attempts <= 3) {
-                            setRetryCount((prev) => ({ ...prev, [video.src]: attempts }))
-                            const el = videoRefs.current[index]
-                            if (el) {
-                              setTimeout(() => { el.load() }, 800 * attempts)
-                            }
-                          } else {
-                            setErrored((prev) => ({ ...prev, [video.src]: true }))
-                          }
-                        }}
-                      />
+                      <div className="relative aspect-[9/16] h-full w-full">
+                        <video
+                          ref={(el) => {
+                            videoRefs.current[index] = el
+                            if (el) armStallTimer(index, video.src)
+                          }}
+                          src={video.src}
+                          autoPlay
+                          muted
+                          loop
+                          playsInline
+                          preload="auto"
+                          className="h-full w-full object-cover transition-transform duration-700 group-hover:scale-[1.03]"
+                          onLoadedData={() => markLoaded(index)}
+                          onCanPlay={() => markLoaded(index)}
+                          onPlaying={() => markLoaded(index)}
+                          onStalled={() => armStallTimer(index, video.src)}
+                          onSuspend={() => armStallTimer(index, video.src)}
+                          onError={() => {
+                            markUnloaded(index)
+                            clearStallTimer(index)
+                            handleFailure(index, video.src)
+                          }}
+                        />
+                        {/* Loading skeleton — shown until the video actually has a frame,
+                            so a slow/stalled load reads as "loading" instead of blank white */}
+                        {!loadedVideos.has(index) && !errored[video.src] && (
+                          <div className="absolute inset-0 animate-pulse bg-gradient-to-br from-[var(--cream)] to-[var(--soft-beige)]" />
+                        )}
+                      </div>
                     ) : (
                       <div className="aspect-[9/16] w-full animate-pulse bg-gradient-to-br from-[var(--cream)] to-[var(--soft-beige)]" />
                     )}
@@ -248,8 +323,13 @@ export function Videos() {
                           onClick={() => {
                             setErrored((prev) => ({ ...prev, [video.src]: false }))
                             setRetryCount((prev) => ({ ...prev, [video.src]: 0 }))
+                            markUnloaded(index)
                             const el = videoRefs.current[index]
-                            if (el) { el.load(); el.play().catch(() => {}) }
+                            if (el) {
+                              armStallTimer(index, video.src)
+                              el.load()
+                              el.play().catch(() => { })
+                            }
                           }}
                           className="rounded-full bg-white/90 px-5 py-2 text-sm font-medium text-black transition-colors hover:bg-white"
                         >
